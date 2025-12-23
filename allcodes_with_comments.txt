@@ -1,0 +1,868 @@
+Filename:01_eda_preprocessing.py
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
+#import pandas as pd
+#import numpy as np
+from sklearn.preprocessing import LabelEncoder
+#import warnings
+#warnings.filterwarnings('ignore')
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import joblib
+import os
+
+# Set style for better visualizations
+sns.set_style('whitegrid')
+plt.rcParams['figure.figsize'] = (12, 6)
+
+print("="*60)
+print("PART 1: DATA LOADING & EXPLORATION")
+print("="*60)
+
+
+
+# ============================================================
+# STEP 1: LOAD DATA
+# ============================================================
+print("\n📂 Loading data...")
+df = pd.read_csv('jay/data/Telco-Churn.csv')
+
+print(f"✅ Data loaded successfully!")
+print(f"   Shape: {df.shape[0]} rows, {df.shape[1]} columns")
+
+# ============================================================
+# STEP 2: INITIAL EXPLORATION
+# ============================================================
+print("\n🔍 First 5 rows:")
+print(df.head())
+
+print("\n📊 Dataset Info:")
+print(df.info())
+
+print("\n📈 Statistical Summary (Numerical columns):")
+print(df.describe())
+
+print("\n❓ Checking for Missing Values:")
+missing = df.isnull().sum()
+if missing.sum() > 0:
+    print("   Missing values found:")
+    print(missing[missing > 0])
+else:
+    print("   ✅ No missing values found!")
+
+# ============================================================
+# STEP 3: ANALYZE TARGET VARIABLE (Churn)
+# ============================================================
+print("\n🎯 Target Variable Distribution:")
+churn_counts = df['Churn'].value_counts()
+print(churn_counts)
+
+churn_rate = (churn_counts['Yes'] / len(df) * 100)
+print(f"\n📊 Churn Rate: {churn_rate:.2f}%")
+print(f"   - {churn_counts['Yes']} customers left (churned)")
+print(f"   - {churn_counts['No']} customers stayed")
+
+# ============================================================
+# STEP 4: EXPLORE CATEGORICAL COLUMNS
+# ============================================================
+print("\n📋 Categorical Columns:")
+categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+print(f"   Found {len(categorical_cols)} categorical columns:")
+for col in categorical_cols:
+    print(f"      - {col}: {df[col].nunique()} unique values")
+
+# ============================================================
+# STEP 5: EXPLORE NUMERICAL COLUMNS
+# ============================================================
+print("\n🔢 Numerical Columns:")
+numerical_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+print(f"   Found {len(numerical_cols)} numerical columns:")
+for col in numerical_cols:
+    print(f"      - {col}")
+
+print("\n" + "="*60)
+print("✨ PART 1 COMPLETE - Data Exploration Done!")
+print("="*60)
+print("\n💡 Key Findings:")
+print(f"   - Total customers: {len(df)}")
+print(f"   - Churn rate: {churn_rate:.2f}%")
+print(f"   - Features: {len(df.columns) - 1}")
+print("\n➡️  Ready for Part 2: Data Cleaning & Feature Engineering")
+
+
+
+
+
+
+
+
+
+print("="*60)
+print("PART 2: DATA CLEANING & FEATURE ENGINEERING")
+print("="*60)
+
+# ============================================================
+# STEP 1: LOAD THE DATA
+# ============================================================
+print("\n📂 Loading data...")
+df = pd.read_csv('jay/data/Telco-Churn.csv')
+print(f"✅ Loaded: {df.shape[0]} rows, {df.shape[1]} columns")
+
+# ============================================================
+# STEP 2: DATA CLEANING
+# ============================================================
+print("\n🧹 Starting Data Cleaning...")
+
+# Fix TotalCharges column
+print("\n   Fixing TotalCharges column...")
+print(f"   Current data type: {df['TotalCharges'].dtype}")
+
+# Convert to numeric (some values are spaces)
+df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+
+# Check how many missing values we created
+nan_count = df['TotalCharges'].isna().sum()
+if nan_count > 0:
+    print(f"   ⚠️  Found {nan_count} invalid values")
+    print(f"   📝 Filling with median value...")
+    median_value = df['TotalCharges'].median()
+    df['TotalCharges'].fillna(median_value, inplace=True)
+    print(f"   ✅ Filled with median: ${median_value:.2f}")
+else:
+    print(f"   ✅ No issues found!")
+
+# Drop customerID (not useful for prediction)
+print("\n   Removing customerID column...")
+df = df.drop('customerID', axis=1)
+print(f"   ✅ Dropped! New shape: {df.shape}")
+
+# ============================================================
+# STEP 3: FEATURE ENGINEERING
+# ============================================================
+print("\n⚙️  Creating New Features...")
+
+# 1. Tenure Groups
+print("\n   1️⃣  Creating tenure_group...")
+df['tenure_group'] = pd.cut(df['tenure'], 
+                             bins=[0, 12, 24, 48, 72], 
+                             labels=['0-1 Year', '1-2 Years', '2-4 Years', '4+ Years'])
+print("      ✅ Grouped customers by how long they've stayed")
+print(f"      Distribution:\n{df['tenure_group'].value_counts().sort_index()}")
+
+# 2. Monthly Charges Groups
+print("\n   2️⃣  Creating monthly_charges_group...")
+df['monthly_charges_group'] = pd.cut(df['MonthlyCharges'], 
+                                      bins=[0, 35, 65, 100, 150],
+                                      labels=['Low', 'Medium', 'High', 'Very High'])
+print("      ✅ Grouped customers by monthly payment amount")
+print(f"      Distribution:\n{df['monthly_charges_group'].value_counts().sort_index()}")
+
+# 3. Average Monthly Charges
+print("\n   3️⃣  Creating avg_monthly_charges...")
+df['avg_monthly_charges'] = df['TotalCharges'] / (df['tenure'] + 1)
+print("      ✅ Calculated: TotalCharges / tenure")
+print(f"      Average: ${df['avg_monthly_charges'].mean():.2f}")
+
+# ============================================================
+# STEP 4: ENCODING CATEGORICAL VARIABLES
+# ============================================================
+print("\n🔤 Encoding Categorical Variables...")
+
+# Separate features and target
+print("\n   Separating features (X) and target (y)...")
+X = df.drop('Churn', axis=1)
+y = df['Churn']
+
+# Encode target variable
+print("\n   Encoding target variable (Churn)...")
+y = y.map({'Yes': 1, 'No': 0})
+print("      ✅ Yes → 1 (Churned)")
+print("      ✅ No → 0 (Stayed)")
+print(f"      Churn distribution: {y.value_counts().to_dict()}")
+
+# Get categorical columns
+categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+print(f"\n   Found {len(categorical_cols)} categorical columns to encode")
+
+# Binary encoding (for columns with only 2 values)
+binary_cols = ['gender', 'Partner', 'Dependents', 'PhoneService', 'PaperlessBilling']
+
+print("\n   📝 Label Encoding (for binary columns)...")
+le = LabelEncoder()
+for col in binary_cols:
+    if col in X.columns:
+        original_values = X[col].unique()[:2]  # Show first 2 values
+        X[col] = le.fit_transform(X[col])
+        print(f"      ✅ {col}: {original_values[0]}→0, {original_values[1]}→1")
+
+# One-Hot Encoding (for columns with 3+ values)
+print("\n   🔢 One-Hot Encoding (for multi-category columns)...")
+multi_category_cols = [col for col in categorical_cols if col not in binary_cols]
+
+print(f"      Encoding {len(multi_category_cols)} columns:")
+for col in multi_category_cols:
+    print(f"         - {col} ({X[col].nunique()} categories)")
+
+X = pd.get_dummies(X, columns=multi_category_cols, drop_first=True, dtype=int)
+print(f"\n      ✅ Done! New shape: {X.shape}")
+print(f"      Total features increased from {len(df.columns)-1} to {X.shape[1]}")
+
+# ============================================================
+# STEP 5: SAVE CLEANED DATA
+# ============================================================
+print("\n💾 Saving Cleaned Data...")
+
+# Save to new files
+X.to_csv('jay/data/X_cleaned.csv', index=False)
+y.to_csv('jay/data/y_cleaned.csv', index=False)
+
+print("   ✅ Saved:")
+print("      - jay/data/X_cleaned.csv")
+print("      - jay/data/y_cleaned.csv")
+
+# ============================================================
+# STEP 6: SUMMARY
+# ============================================================
+print("\n" + "="*60)
+print("✨ PART 2 COMPLETE - Data Cleaning Done!")
+print("="*60)
+print(f"📊 Summary:")
+print(f"   - Original features: {len(df.columns) - 1}")
+print(f"   - New features created: 3 (tenure_group, monthly_charges_group, avg_monthly_charges)")
+print(f"   - After encoding: {X.shape[1]} features")
+print(f"   - Target encoded: Yes=1, No=0")
+print(f"   - Ready for: Scaling & Train-Test Split")
+print("="*60)
+
+# Show first few rows of cleaned data
+print("\n👀 Preview of cleaned features (first 5 rows, first 10 columns):")
+print(X.iloc[:5, :10])
+
+print("\n👀 Preview of target variable (first 10 values):")
+print(y.head(10).tolist())
+
+print("\n➡️  Ready for Part 3: Scaling & Train-Test Split!")
+
+
+
+
+print("="*60)
+print("PART 3: SCALING & TRAIN-TEST SPLIT")
+print("="*60)
+
+# ============================================================
+# STEP 1: LOAD CLEANED DATA
+# ============================================================
+print("\n📂 Loading cleaned data...")
+X = pd.read_csv('jay/data/X_cleaned.csv')
+y = pd.read_csv('jay/data/y_cleaned.csv')
+
+print(f"✅ Loaded!")
+print(f"   Features (X): {X.shape}")
+print(f"   Target (y): {y.shape}")
+
+# ============================================================
+# STEP 2: FEATURE SCALING
+# ============================================================
+print("\n📏 Scaling Numerical Features...")
+
+# Identify numerical columns that need scaling
+numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges', 'avg_monthly_charges']
+
+print(f"\n   Columns to scale: {len(numerical_cols)}")
+for col in numerical_cols:
+    print(f"      - {col}")
+
+# Show before scaling
+print(f"\n   📊 Before Scaling (sample values):")
+print(X[numerical_cols].head(3))
+
+# Create and fit scaler
+scaler = StandardScaler()
+X[numerical_cols] = scaler.fit_transform(X[numerical_cols])
+
+# Show after scaling
+print(f"\n   📊 After Scaling (sample values):")
+print(X[numerical_cols].head(3))
+
+print("\n   ✅ Scaling complete!")
+print("      Why? So big numbers don't dominate small numbers in the model")
+
+# ============================================================
+# STEP 3: TRAIN-TEST SPLIT
+# ============================================================
+print("\n✂️  Splitting Data into Training and Testing Sets...")
+
+# Split: 80% training, 20% testing
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, 
+    test_size=0.2,      # 20% for testing
+    random_state=42,    # For reproducibility
+    stratify=y          # Keep same churn ratio in both sets
+)
+
+print(f"\n   ✅ Split complete!")
+print(f"\n   📊 Training Set:")
+print(f"      - Samples: {X_train.shape[0]}")
+print(f"      - Features: {X_train.shape[1]}")
+print(f"      - Churn rate: {(y_train['Churn'].sum() / len(y_train) * 100):.2f}%")
+
+print(f"\n   📊 Test Set:")
+print(f"      - Samples: {X_test.shape[0]}")
+print(f"      - Features: {X_test.shape[1]}")
+print(f"      - Churn rate: {(y_test['Churn'].sum() / len(y_test) * 100):.2f}%")
+
+print("\n   💡 Why split?")
+print("      - Train set: Teach the model")
+print("      - Test set: Evaluate how well it learned (unseen data)")
+
+# ============================================================
+# STEP 4: SAVE EVERYTHING
+# ============================================================
+print("\n💾 Saving Processed Data...")
+
+# Create models directory if it doesn't exist
+os.makedirs('jay/models', exist_ok=True)
+
+# Save train-test split
+X_train.to_csv('jay/data/X_train.csv', index=False)
+X_test.to_csv('jay/data/X_test.csv', index=False)
+y_train.to_csv('jay/data/y_train.csv', index=False)
+y_test.to_csv('jay/data/y_test.csv', index=False)
+
+# Save the scaler (we'll need it later for predictions)
+joblib.dump(scaler, 'jay/models/scaler.pkl')
+
+print("\n   ✅ Saved successfully:")
+print("      📁 Data files:")
+print("         - jay/data/X_train.csv")
+print("         - jay/data/X_test.csv")
+print("         - jay/data/y_train.csv")
+print("         - jay/data/y_test.csv")
+print("      📁 Model files:")
+print("         - jay/models/scaler.pkl")
+
+# ============================================================
+# STEP 5: FINAL SUMMARY
+# ============================================================
+print("\n" + "="*60)
+print("✨ PREPROCESSING COMPLETE - READY FOR MODEL TRAINING!")
+print("="*60)
+
+print("\n📊 Final Dataset Summary:")
+print(f"   Original data: 7,043 customers")
+print(f"   Features: {X_train.shape[1]}")
+print(f"   Training samples: {X_train.shape[0]} (80%)")
+print(f"   Testing samples: {X_test.shape[0]} (20%)")
+print(f"   Churn rate: ~26.5% (imbalanced)")
+
+print("\n🎯 What We Did:")
+print("   ✅ Cleaned data (fixed TotalCharges)")
+print("   ✅ Created new features (tenure_group, etc.)")
+print("   ✅ Encoded text to numbers")
+print("   ✅ Scaled numerical features")
+print("   ✅ Split into train/test sets")
+print("   ✅ Saved everything for model training")
+
+print("\n🚀 Next Steps:")
+print("   Phase 2: Build and train ML models")
+print("   We'll try: Logistic Regression, Random Forest, XGBoost")
+print("   Goal: Predict which customers will churn!")
+
+print("\n" + "="*60)
+print("🎉 PHASE 1 COMPLETE!")
+print("="*60)
+
+# Show feature names for reference
+print("\n📋 All 37 Features (for reference):")
+for i, col in enumerate(X.columns, 1):
+    print(f"   {i:2d}. {col}")
+
+print("\n✅ Everything is ready! You can now move to Phase 2.")
+
+Filename:all_models.py
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import (
+    accuracy_score, 
+    precision_score, 
+    recall_score, 
+    f1_score, 
+    confusion_matrix, 
+    classification_report,
+    roc_auc_score,
+    roc_curve
+)
+from imblearn.over_sampling import SMOTE
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+# Set plotting style
+sns.set_style('whitegrid')
+plt.rcParams['figure.figsize'] = (12, 6)
+
+print("="*70)
+print("PHASE 2: MACHINE LEARNING MODEL TRAINING")
+print("="*70)
+
+# ============================================================
+# STEP 1: LOAD PREPROCESSED DATA
+# ============================================================
+print("\n[1/7] Loading preprocessed data...")
+
+X_train = pd.read_csv('jay/data/X_train.csv')
+X_test = pd.read_csv('jay/data/X_test.csv')
+y_train = pd.read_csv('jay/data/y_train.csv')
+y_test = pd.read_csv('jay/data/y_test.csv')
+
+X_train = X_train.replace((np.inf, -np.inf, np.nan), 0)
+X_test = X_test.replace((np.inf, -np.inf, np.nan), 0)
+
+
+# Convert y to 1D array (some algorithms prefer this)
+y_train = y_train.values.ravel()
+y_test = y_test.values.ravel()
+
+print(f"Training set: {X_train.shape[0]} samples, {X_train.shape[1]} features")
+print(f"Test set: {X_test.shape[0]} samples")
+print(f"Churn distribution in training: {np.bincount(y_train)}")
+
+# ============================================================
+# STEP 2: HANDLE CLASS IMBALANCE WITH SMOTE
+# ============================================================
+print("\n[2/7] Handling class imbalance with SMOTE...")
+
+# SMOTE creates synthetic samples of minority class (churned customers)
+# This helps the model learn better from both classes
+smote = SMOTE(random_state=42)
+X_train_balanced, y_train_balanced = smote.fit_resample(X_train, y_train)
+
+print(f"Before SMOTE: {np.bincount(y_train)}")
+print(f"After SMOTE: {np.bincount(y_train_balanced)}")
+print("Classes are now balanced for better model training")
+
+# ============================================================
+# STEP 3: TRAIN MODEL 1 - LOGISTIC REGRESSION
+# ============================================================
+print("\n[3/7] Training Model 1: Logistic Regression...")
+
+# Simple linear model, fast and interpretable
+lr_model = LogisticRegression(random_state=42, max_iter=1000)
+lr_model.fit(X_train_balanced, y_train_balanced)
+
+# Make predictions
+lr_pred = lr_model.predict(X_test)
+lr_pred_proba = lr_model.predict_proba(X_test)[:, 1]
+
+# Calculate metrics
+lr_accuracy = accuracy_score(y_test, lr_pred)
+lr_precision = precision_score(y_test, lr_pred)
+lr_recall = recall_score(y_test, lr_pred)
+lr_f1 = f1_score(y_test, lr_pred)
+lr_auc = roc_auc_score(y_test, lr_pred_proba)
+
+print(f"Accuracy: {lr_accuracy:.4f}")
+print(f"Precision: {lr_precision:.4f}")
+print(f"Recall: {lr_recall:.4f}")
+print(f"F1-Score: {lr_f1:.4f}")
+print(f"ROC-AUC: {lr_auc:.4f}")
+
+# ============================================================
+# STEP 4: TRAIN MODEL 2 - RANDOM FOREST
+# ============================================================
+print("\n[4/7] Training Model 2: Random Forest...")
+
+# Ensemble of decision trees, more powerful than logistic regression
+rf_model = RandomForestClassifier(
+    n_estimators=100,      # Number of trees
+    random_state=42,
+    max_depth=10,          # Limit tree depth to prevent overfitting
+    min_samples_split=10,
+    n_jobs=-1              # Use all CPU cores
+)
+rf_model.fit(X_train_balanced, y_train_balanced)
+
+# Make predictions
+rf_pred = rf_model.predict(X_test)
+rf_pred_proba = rf_model.predict_proba(X_test)[:, 1]
+
+# Calculate metrics
+rf_accuracy = accuracy_score(y_test, rf_pred)
+rf_precision = precision_score(y_test, rf_pred)
+rf_recall = recall_score(y_test, rf_pred)
+rf_f1 = f1_score(y_test, rf_pred)
+rf_auc = roc_auc_score(y_test, rf_pred_proba)
+
+print(f"Accuracy: {rf_accuracy:.4f}")
+print(f"Precision: {rf_precision:.4f}")
+print(f"Recall: {rf_recall:.4f}")
+print(f"F1-Score: {rf_f1:.4f}")
+print(f"ROC-AUC: {rf_auc:.4f}")
+
+# ============================================================
+# STEP 5: TRAIN MODEL 3 - XGBOOST
+# ============================================================
+print("\n[5/7] Training Model 3: XGBoost...")
+
+# Advanced gradient boosting, often best performance
+xgb_model = XGBClassifier(
+    n_estimators=100,
+    learning_rate=0.1,
+    max_depth=6,
+    random_state=42,
+    eval_metric='logloss'
+)
+xgb_model.fit(X_train_balanced, y_train_balanced)
+
+# Make predictions
+xgb_pred = xgb_model.predict(X_test)
+xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
+
+# Calculate metrics
+xgb_accuracy = accuracy_score(y_test, xgb_pred)
+xgb_precision = precision_score(y_test, xgb_pred)
+xgb_recall = recall_score(y_test, xgb_pred)
+xgb_f1 = f1_score(y_test, xgb_pred)
+xgb_auc = roc_auc_score(y_test, xgb_pred_proba)
+
+print(f"Accuracy: {xgb_accuracy:.4f}")
+print(f"Precision: {xgb_precision:.4f}")
+print(f"Recall: {xgb_recall:.4f}")
+print(f"F1-Score: {xgb_f1:.4f}")
+print(f"ROC-AUC: {xgb_auc:.4f}")
+
+# ============================================================
+# STEP 6: COMPARE ALL MODELS
+# ============================================================
+print("\n[6/7] Comparing all models...")
+
+# Create comparison dataframe
+comparison_df = pd.DataFrame({
+    'Model': ['Logistic Regression', 'Random Forest', 'XGBoost'],
+    'Accuracy': [lr_accuracy, rf_accuracy, xgb_accuracy],
+    'Precision': [lr_precision, rf_precision, xgb_precision],
+    'Recall': [lr_recall, rf_recall, xgb_recall],
+    'F1-Score': [lr_f1, rf_f1, xgb_f1],
+    'ROC-AUC': [lr_auc, rf_auc, xgb_auc]
+})
+
+print("\n" + "="*70)
+print("MODEL PERFORMANCE COMPARISON")
+print("="*70)
+print(comparison_df.to_string(index=False))
+
+# Find best model based on F1-score (balance of precision and recall)
+best_model_idx = comparison_df['F1-Score'].idxmax()
+best_model_name = comparison_df.loc[best_model_idx, 'Model']
+best_f1 = comparison_df.loc[best_model_idx, 'F1-Score']
+
+print("\n" + "="*70)
+print(f"BEST MODEL: {best_model_name}")
+print(f"F1-Score: {best_f1:.4f}")
+print("="*70)
+
+# ============================================================
+# STEP 7: SAVE BEST MODEL
+# ============================================================
+print("\n[7/7] Saving models...")
+
+# Save all models
+joblib.dump(lr_model, 'jay/models/logistic_regression.pkl')
+joblib.dump(rf_model, 'jay/models/random_forest.pkl')
+joblib.dump(xgb_model, 'jay/models/xgboost.pkl')
+
+# Save best model separately
+if best_model_name == 'Logistic Regression':
+    joblib.dump(lr_model, 'jay/models/best_model.pkl')
+elif best_model_name == 'Random Forest':
+    joblib.dump(rf_model, 'jay/models/best_model.pkl')
+else:
+    joblib.dump(xgb_model, 'jay/models/best_model.pkl')
+
+print("Models saved:")
+print("  - jay/models/logistic_regression.pkl")
+print("  - jay/models/random_forest.pkl")
+print("  - jay/models/xgboost.pkl")
+print(f"  - jay/models/best_model.pkl ({best_model_name})")
+
+# ============================================================
+# STEP 8: VISUALIZATION 1 - MODEL COMPARISON CHART
+# ============================================================
+print("\n[8/7] Creating visualizations...")
+
+# Bar chart comparing all metrics
+fig, ax = plt.subplots(figsize=(14, 6))
+
+metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC']
+x = np.arange(len(metrics))
+width = 0.25
+
+# Plot bars for each model
+ax.bar(x - width, comparison_df.iloc[0, 1:].values, width, label='Logistic Regression', color='#3498db')
+ax.bar(x, comparison_df.iloc[1, 1:].values, width, label='Random Forest', color='#2ecc71')
+ax.bar(x + width, comparison_df.iloc[2, 1:].values, width, label='XGBoost', color='#e74c3c')
+
+ax.set_xlabel('Metrics', fontsize=12)
+ax.set_ylabel('Score', fontsize=12)
+ax.set_title('Model Performance Comparison', fontsize=14, fontweight='bold')
+ax.set_xticks(x)
+ax.set_xticklabels(metrics)
+ax.legend()
+ax.set_ylim([0, 1.1])
+ax.grid(axis='y', alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('jay/models/model_comparison.png', dpi=300, bbox_inches='tight')
+print("Saved: jay/models/model_comparison.png")
+
+# ============================================================
+# STEP 9: VISUALIZATION 2 - CONFUSION MATRICES
+# ============================================================
+
+# Create confusion matrices for all models
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+models_data = [
+    ('Logistic Regression', lr_pred),
+    ('Random Forest', rf_pred),
+    ('XGBoost', xgb_pred)
+]
+
+for idx, (name, predictions) in enumerate(models_data):
+    cm = confusion_matrix(y_test, predictions)
+    
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=axes[idx], 
+                cbar=False, square=True)
+    axes[idx].set_title(f'{name}\nConfusion Matrix', fontweight='bold')
+    axes[idx].set_xlabel('Predicted')
+    axes[idx].set_ylabel('Actual')
+    axes[idx].set_xticklabels(['Stayed (0)', 'Churned (1)'])
+    axes[idx].set_yticklabels(['Stayed (0)', 'Churned (1)'])
+
+plt.tight_layout()
+plt.savefig('jay/models/confusion_matrices.png', dpi=300, bbox_inches='tight')
+print("Saved: jay/models/confusion_matrices.png")
+
+# ============================================================
+# STEP 10: VISUALIZATION 3 - ROC CURVES
+# ============================================================
+
+# Plot ROC curves for all models
+fig, ax = plt.subplots(figsize=(10, 8))
+
+# Calculate ROC curves
+lr_fpr, lr_tpr, _ = roc_curve(y_test, lr_pred_proba)
+rf_fpr, rf_tpr, _ = roc_curve(y_test, rf_pred_proba)
+xgb_fpr, xgb_tpr, _ = roc_curve(y_test, xgb_pred_proba)
+
+# Plot
+ax.plot(lr_fpr, lr_tpr, label=f'Logistic Regression (AUC = {lr_auc:.3f})', linewidth=2, color='#3498db')
+ax.plot(rf_fpr, rf_tpr, label=f'Random Forest (AUC = {rf_auc:.3f})', linewidth=2, color='#2ecc71')
+ax.plot(xgb_fpr, xgb_tpr, label=f'XGBoost (AUC = {xgb_auc:.3f})', linewidth=2, color='#e74c3c')
+ax.plot([0, 1], [0, 1], 'k--', label='Random Guess', linewidth=1)
+
+ax.set_xlabel('False Positive Rate', fontsize=12)
+ax.set_ylabel('True Positive Rate', fontsize=12)
+ax.set_title('ROC Curves - Model Comparison', fontsize=14, fontweight='bold')
+ax.legend(loc='lower right', fontsize=10)
+ax.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('jay/models/roc_curves.png', dpi=300, bbox_inches='tight')
+print("Saved: jay/models/roc_curves.png")
+
+# ============================================================
+# STEP 11: FEATURE IMPORTANCE (for best tree-based model)
+# ============================================================
+
+if best_model_name in ['Random Forest', 'XGBoost']:
+    print("\nCalculating feature importance...")
+    
+    # Get feature importance
+    if best_model_name == 'Random Forest':
+        importance = rf_model.feature_importances_
+    else:
+        importance = xgb_model.feature_importances_
+    
+    # Create dataframe
+    feature_importance_df = pd.DataFrame({
+        'Feature': X_train.columns,
+        'Importance': importance
+    }).sort_values('Importance', ascending=False).head(15)
+    
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 8))
+    ax.barh(feature_importance_df['Feature'], feature_importance_df['Importance'], color='#3498db')
+    ax.set_xlabel('Importance Score', fontsize=12)
+    ax.set_ylabel('Feature', fontsize=12)
+    ax.set_title(f'Top 15 Most Important Features - {best_model_name}', fontsize=14, fontweight='bold')
+    ax.invert_yaxis()
+    ax.grid(axis='x', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('jay/models/feature_importance.png', dpi=300, bbox_inches='tight')
+    print("Saved: jay/models/feature_importance.png")
+
+# ============================================================
+# FINAL SUMMARY
+# ============================================================
+print("\n" + "="*70)
+print("PHASE 2 COMPLETE - MODEL TRAINING FINISHED!")
+print("="*70)
+
+print("\nWhat we accomplished:")
+print("  1. Loaded preprocessed data (5,634 training samples)")
+print("  2. Balanced classes using SMOTE")
+print("  3. Trained 3 different ML models")
+print("  4. Evaluated all models on test set (1,409 samples)")
+print("  5. Compared performance metrics")
+print(f"  6. Selected best model: {best_model_name}")
+print("  7. Saved all models")
+print("  8. Created 3-4 visualization charts")
+
+print("\nFiles created:")
+print("  Models:")
+print("    - jay/models/logistic_regression.pkl")
+print("    - jay/models/random_forest.pkl")
+print("    - jay/models/xgboost.pkl")
+print("    - jay/models/best_model.pkl")
+print("  Visualizations:")
+print("    - jay/models/model_comparison.png")
+print("    - jay/models/confusion_matrices.png")
+print("    - jay/models/roc_curves.png")
+if best_model_name in ['Random Forest', 'XGBoost']:
+    print("    - jay/models/feature_importance.png")
+
+print("\nNext Phase: Build a Streamlit dashboard for predictions!")
+print("="*70)
+
+Filename:app.py
+
+import streamlit as st
+import pandas as pd
+import joblib
+
+st.set_page_config(page_title="Telco Churn Risk Dashboard", layout="wide")
+st.title("📊 Telco Churn Risk Dashboard")
+st.markdown("**Random Forest (F1: 63.2%) – PRODUCTION READY**")
+
+model = joblib.load("jay/models/best_model.pkl")
+
+# ========== Sidebar inputs ==========
+st.sidebar.header("👤 Customer Profile")
+
+tenure = st.sidebar.slider("Tenure (months)", 0, 72, 12)
+monthly = st.sidebar.slider("Monthly Charges ($)", 18.0, 118.8, 70.0)
+total = st.sidebar.slider("Total Charges ($)", 0.0, 8684.8, 1000.0)
+
+st.sidebar.markdown("---")
+
+contract = st.sidebar.selectbox(
+    "Contract type",
+    ["Month-to-month", "One year", "Two year"]
+)
+
+payment = st.sidebar.selectbox(
+    "Payment method",
+    ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"]
+)
+
+paperless = st.sidebar.selectbox(
+    "Paperless billing",
+    ["Yes", "No"]
+)
+
+internet = st.sidebar.selectbox(
+    "Internet service",
+    ["DSL", "Fiber optic", "No"]
+)
+
+#st.sidebar.markdown("---")
+#st.sidebar.info("Try:\n- Month-to-month + Electronic check + Fiber optic + low tenure → often HIGH risk\n- Two year + automatic payment + long tenure → LOW risk")
+
+st.header("🔮 Predict Churn Risk")
+
+if st.button("🎯 PREDICT CHURN", type="primary"):
+    with st.spinner("Analyzing customer risk..."):
+        # 1) Take exact 37-feature structure
+        X_template = pd.read_csv("jay/data/X_test.csv").iloc[[0]]  # 1×37
+
+        # 2) Override numeric features
+        X_template["tenure"] = tenure
+        X_template["MonthlyCharges"] = monthly
+        X_template["TotalCharges"] = total
+        X_template["avg_monthly_charges"] = total / max(tenure + 1, 1)
+
+        # 3) Reset and set CONTRACT dummies
+        for col in X_template.columns:
+            if col.startswith("Contract_"):
+                X_template[col] = 0
+        if contract == "Month-to-month" and "Contract_Month-to-month" in X_template.columns:
+            X_template["Contract_Month-to-month"] = 1
+        elif contract == "One year" and "Contract_One year" in X_template.columns:
+            X_template["Contract_One year"] = 1
+        elif contract == "Two year" and "Contract_Two year" in X_template.columns:
+            X_template["Contract_Two year"] = 1
+
+        # 4) Reset and set PAYMENT METHOD dummies
+        for col in X_template.columns:
+            if col.startswith("PaymentMethod_"):
+                X_template[col] = 0
+        mapping_pay = {
+            "Electronic check": "PaymentMethod_Electronic check",
+            "Mailed check": "PaymentMethod_Mailed check",
+            "Bank transfer (automatic)": "PaymentMethod_Bank transfer (automatic)",
+            "Credit card (automatic)": "PaymentMethod_Credit card (automatic)",
+        }
+        pay_col = mapping_pay.get(payment)
+        if pay_col in X_template.columns:
+            X_template[pay_col] = 1
+
+        # 5) PaperlessBilling (binary)
+        if "PaperlessBilling" in X_template.columns:
+            X_template["PaperlessBilling"] = 1 if paperless == "Yes" else 0
+
+        # 6) InternetService dummies
+        for col in X_template.columns:
+            if col.startswith("InternetService_"):
+                X_template[col] = 0
+        mapping_int = {
+            "DSL": "InternetService_DSL",
+            "Fiber optic": "InternetService_Fiber optic",
+            "No": "InternetService_No",
+        }
+        int_col = mapping_int.get(internet)
+        if int_col in X_template.columns:
+            X_template[int_col] = 1
+
+        # 7) Predict
+        prob = model.predict_proba(X_template)[0, 1]
+        threshold = 0.35  # or 0.4, tune as you like
+        pred = int(prob >= threshold)
+
+
+        col1, col2 = st.columns(2)
+        col1.metric("Churn Probability", f"{prob:.1%}")
+        col2.metric("Risk", "🚨 HIGH" if pred == 1 else "✅ LOW")
+
+        st.markdown("### 📈 Recommendation")
+        if pred == 1:
+            st.error("High churn risk – offer retention discounts / benefits.")
+        else:
+            st.success("Customer likely to stay – maintain current plan.")
+
+st.markdown("---")
+st.caption("Uses the same 37 encoded features as your training data (X_train/X_test).")
+

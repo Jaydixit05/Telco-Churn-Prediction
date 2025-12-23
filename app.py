@@ -8,7 +8,7 @@ st.markdown("**Random Forest (F1: 63.2%) – PRODUCTION READY**")
 
 model = joblib.load("jay/models/best_model.pkl")
 
-# ========== Sidebar inputs ==========
+# Sidebar inputs
 st.sidebar.header("👤 Customer Profile")
 
 tenure = st.sidebar.slider("Tenure (months)", 0, 72, 12)
@@ -37,15 +37,12 @@ internet = st.sidebar.selectbox(
     ["DSL", "Fiber optic", "No"]
 )
 
-#st.sidebar.markdown("---")
-#st.sidebar.info("Try:\n- Month-to-month + Electronic check + Fiber optic + low tenure → often HIGH risk\n- Two year + automatic payment + long tenure → LOW risk")
-
 st.header("🔮 Predict Churn Risk")
 
 if st.button("🎯 PREDICT CHURN", type="primary"):
     with st.spinner("Analyzing customer risk..."):
         # 1) Take exact 37-feature structure
-        X_template = pd.read_csv("jay/data/X_test.csv").iloc[[0]]  # 1×37
+        X_template = pd.read_csv("jay/data/X_test.csv").iloc[[0]]
 
         # 2) Override numeric features
         X_template["tenure"] = tenure
@@ -53,7 +50,7 @@ if st.button("🎯 PREDICT CHURN", type="primary"):
         X_template["TotalCharges"] = total
         X_template["avg_monthly_charges"] = total / max(tenure + 1, 1)
 
-        # 3) Reset and set CONTRACT dummies
+        # 3) Contract dummies
         for col in X_template.columns:
             if col.startswith("Contract_"):
                 X_template[col] = 0
@@ -64,7 +61,7 @@ if st.button("🎯 PREDICT CHURN", type="primary"):
         elif contract == "Two year" and "Contract_Two year" in X_template.columns:
             X_template["Contract_Two year"] = 1
 
-        # 4) Reset and set PAYMENT METHOD dummies
+        # 4) Payment method dummies
         for col in X_template.columns:
             if col.startswith("PaymentMethod_"):
                 X_template[col] = 0
@@ -78,7 +75,7 @@ if st.button("🎯 PREDICT CHURN", type="primary"):
         if pay_col in X_template.columns:
             X_template[pay_col] = 1
 
-        # 5) PaperlessBilling (binary)
+        # 5) PaperlessBilling
         if "PaperlessBilling" in X_template.columns:
             X_template["PaperlessBilling"] = 1 if paperless == "Yes" else 0
 
@@ -97,9 +94,8 @@ if st.button("🎯 PREDICT CHURN", type="primary"):
 
         # 7) Predict
         prob = model.predict_proba(X_template)[0, 1]
-        threshold = 0.35  # or 0.4, tune as you like
+        threshold = 0.35
         pred = int(prob >= threshold)
-
 
         col1, col2 = st.columns(2)
         col1.metric("Churn Probability", f"{prob:.1%}")
